@@ -88,7 +88,7 @@ class ProxmoxAPIext(ProxmoxAPI):
 
     def get_vms(self, filterfunc = lambda x: x):
         vms = {}
-        for vm in filter(filterfunc, proxmox.cluster.resources.get(type='vm')):
+        for vm in filter(filterfunc, self.cluster.resources.get(type='vm')):
             vms[vm['vmid']] = vm
         return vms
 
@@ -122,13 +122,13 @@ class ProxmoxAPIext(ProxmoxAPI):
             pprint(res)
 
         migrate = {}
-        for dstnode in proxmox.get_nodes(dstnodes, True):
+        for dstnode in self.get_nodes(dstnodes, True):
             migrate[dstnode['node']] = []
         lenvms = len(vms)
         totalneeded = reduce(lambda x,y: x+y, map(lambda x: x['mem'], vms.values()), 0)
         if args.debug:
             print "needed:", totalneeded
-        dstnodes_bymem = proxmox.get_dstnodes_bymem(dstnodes, totalneeded, maxfree)
+        dstnodes_bymem = self.get_dstnodes_bymem(dstnodes, totalneeded, maxfree)
         firstrun = True
         while len(vms):
             dstnodes_bymem = sorted(dstnodes_bymem, key=lambda x: x['memfree'], reverse=True)
@@ -216,7 +216,7 @@ class ProxmoxAPIext(ProxmoxAPI):
                     if args.dryrun:
                         print "would migrate %s (%s) from %s to %s" % (vm['vmid'], vm['name'], vm['node'], dstnode)
                     else:
-                        proxmox.migrate_vm(vm, dstnode)
+                        self.migrate_vm(vm, dstnode)
         for dstnode in dstnodes_bymem:
             print "%s has %d memory free (%0.2f%%)" % (dstnode['node'], dstnode['memfree'], dstnode['memfree'] * 100.0 / dstnode['maxmem'])
 
