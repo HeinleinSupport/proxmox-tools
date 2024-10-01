@@ -241,7 +241,9 @@ def hostname_from_fqdn(fqdn):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-u', '--username', required=True)
-parser.add_argument('-p', '--password', required=True)
+auth = parser.add_mutually_exclusive_group(required=True)
+auth.add_argument('-p', '--password', help="Use the account's password.")
+auth.add_argument('-t', '--token', nargs=2, metavar=("NAME", "VALUE"), help="Use an API token. Arguments are token name and token value.")
 parser.add_argument('-n', '--dryrun', action='store_true', required=False)
 parser.add_argument('-d', '--debug', action='store_true', required=False)
 parser.add_argument('-w', '--wait', action='store_true', required=False)
@@ -272,7 +274,10 @@ vssl = not args.no_verify_ssl
 
 if args.func == 'evacuate':
 
-    proxmox = ProxmoxAPIext(args.source, user=args.username, password=args.password, verify_ssl=vssl)
+    if args.password:
+        proxmox = ProxmoxAPIext(args.source, user=args.username, password=args.password, verify_ssl=vssl)
+    else:
+        proxmox = ProxmoxAPIext(args.source, user=args.username, token_name=args.token[0], token_value=args.token[1], verify_ssl=vssl)
 
     vms = proxmox.get_vms(lambda x: x['status'] == 'running' and x['node'] == hostname_from_fqdn(args.source))
     if args.debug:
@@ -284,7 +289,10 @@ elif args.func == 'balanceram':
     if len(args.nodes) < 2:
         raise RuntimeError('List of nodes is too short: %s' % ', '.join(args.nodes))
 
-    proxmox = ProxmoxAPIext(args.nodes[0], user=args.username, password=args.password, verify_ssl=vssl)
+    if args.password:
+        proxmox = ProxmoxAPIext(args.nodes[0], user=args.username, password=args.password, verify_ssl=vssl)
+    else:
+        proxmox = ProxmoxAPIext(args.nodes[0], user=args.username, token_name=args.token[0], token_value=args.token[1], verify_ssl=vssl)
 
     vms = proxmox.get_vms(lambda x: x['status'] == 'running' and x['node'] in map(hostname_from_fqdn, args.nodes))
     if args.debug:
@@ -294,6 +302,9 @@ elif args.func == 'balanceram':
 
 elif args.func == 'migrate':
 
-    proxmox = ProxmoxAPIext(args.dst, user=args.username, password=args.password, verify_ssl=vssl)
+    if args.password:
+        proxmox = ProxmoxAPIext(args.dst, user=args.username, password=args.password, verify_ssl=vssl)
+    else:
+        proxmox = ProxmoxAPIext(args.dst, user=args.username, token_name=args.token[0], token_value=args.token[1], verify_ssl=vssl)
     if not proxmox.migrate_vmid(args.vmid, hostname_from_fqdn(args.dst)):
         sys.exit(1)
