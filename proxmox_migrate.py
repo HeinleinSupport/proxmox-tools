@@ -92,6 +92,8 @@ class ProxmoxAPIext(ProxmoxAPI):
     def get_vms(self, filterfunc = lambda x: True):
         vms = {}
         for vm in filter(filterfunc, self.cluster.resources.get(type='vm')):
+            mem = round(vm['mem']/134217728.0)*134217728 # auf ganze 128MB runden
+            vm['mem'] = mem
             vms[vm['vmid']] = vm
         return vms
 
