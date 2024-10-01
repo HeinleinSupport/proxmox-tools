@@ -196,7 +196,7 @@ class ProxmoxAPIext(ProxmoxAPI):
                     # is vm HA resource?
                     haresource = vmid in ha_res
                     # is VM HA managed (started)?
-                    started = haresource and ha_res[vmid]['state'] == 'started'
+                    started = haresource and ha_res[vmid].get('state', 'started') == 'started'
                     # is VM for current node based on HA group?
                     forcurrentnode = haresource and (dstnode['node'] in ha_res[vmid]['group']['nodelist'] or not ha_res[vmid]['group']['restricted'])
                     if args.debug:
