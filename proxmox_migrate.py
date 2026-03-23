@@ -67,27 +67,78 @@ class ProxmoxAPIext(ProxmoxAPI):
         vm = list(filter(lambda x: x['vmid'] == vmid, self.cluster.resources.get(type='vm')))[0]
         return self.migrate_vm(vm, dest)
 
+
     def get_groups(self):
+        """
+        Build a group-like dict from PVE9 HA node-affinity rules.
+
+        Returns a dict keyed by rule name, each value containing:
+          - nodelist: list of node names (priorities stripped)
+          - restricted: bool (True if rule is strict)
+          - resources: set of integer VM/CT IDs covered by this rule
+        Falls back to the legacy /cluster/ha/groups endpoint for PVE8.
+        """
         groups = {}
-        for group in self.cluster.ha.groups.get():
-            groups[group['group']] = group
-            groups[group['group']]['nodelist'] = [x.split(':')[0] for x in group['nodes'].split(',')]
+        try:
+            for rule in self.cluster.ha.rules.get():
+                if rule.get('type') != 'node-affinity':
+                    continue  # skip resource-affinity ...
+                rule_name = rule['rule']
+                detail = self.cluster.ha.rules(rule_name).get()
+                # Fetch full rule details (only node-affinity rules have nodes)
+                nodelist = [x.split(':')[0] for x in detail.get('nodes', '').split(',')]
+                restricted = bool(detail.get('strict', 0))
+                res_ids = set()
+                for sid in detail.get('resources', '').split(','):
+                    sid = sid.strip()
+                    if ':' in sid:
+                        try:
+                            res_ids.add(int(sid.split(':')[1]))
+                        except ValueError:
+                            pass
+                groups[rule_name] = {
+                    'group': rule_name,
+                    'nodelist': nodelist,
+                    'restricted': restricted,
+                    'resources': res_ids,
+                }
+        except Exception:
+            # Fallback for PVE8 / legacy clusters still using /cluster/ha/groups
+            for group in self.cluster.ha.groups.get():
+                groups[group['group']] = group
+                groups[group['group']]['nodelist'] = [x.split(':')[0] for x in group['nodes'].split(',')]
         return groups
 
-    def get_ha_resources(self, dstnodes = []):
-        groups = self.get_groups()
+
+    def get_ha_resources(self, dstnodes=[]):
+        # Build a vmid -> group lookup from PVE9 rules (which embed resource lists)
+        # or from legacy groups (where resources reference the group by name).
+        rules = self.get_groups()   # keyed by rule/group name
+
+        # Build a reverse map: vmid (int) -> rule/group dict
+        vmid_to_group = {}
+        for rule in rules.values():
+            for vmid in rule.get('resources', set()):
+                vmid_to_group[vmid] = rule
+
         resources = {}
         for res in self.cluster.ha.resources.get():
             id = int(res['sid'].split(':')[1])
             resources[id] = res
-            if 'group' in res and res['group'] in groups:
-                resources[id]['group'] = groups[res['group']]
+
+            if id in vmid_to_group:
+                resources[id]['group'] = vmid_to_group[id]
+            elif 'group' in res and res['group'] in rules:
+                # PVE8 fallback: resource still has a 'group' field
+                resources[id]['group'] = rules[res['group']]
             else:
                 resources[id]['group'] = {'nodelist': dstnodes}
+
         if args.debug:
             print('*** get_ha_resources()')
             pprint(resources)
         return resources
+
 
     def get_vms(self, filterfunc = lambda x: True):
         vms = {}
